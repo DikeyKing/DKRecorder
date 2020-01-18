@@ -60,17 +60,24 @@ class Recorder: NSObject {
     fileprivate var _frameRenderingSemaphore: DispatchSemaphore!
     fileprivate var _pixelAppendSemaphore: DispatchSemaphore!
 
-    fileprivate var viewSize: CGSize?
+    fileprivate var viewSize: CGSize? = UIApplication.shared.delegate?.window??.bounds.size
     fileprivate var scale: CGFloat!
 
     fileprivate var _rgbColorSpace: CGColorSpace? = nil
     fileprivate var _outputBufferPool: CVPixelBufferPool? = nil
     
+    fileprivate var tempFileURL:URL {
+        get{
+            let outputPath = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("tmp/screenCapture.mov").absoluteString
+            removeTempFilePath(outputPath)
+            return URL(fileURLWithPath: outputPath)
+        }
+    }
+    
     override init() {
         super.init()
         
         // init
-        self.viewSize = UIApplication.shared.delegate?.window??.bounds.size
         scale = UIScreen.main.scale
 
         _append_pixelBuffer_queue = DispatchQueue(label: "ASScreenRecorder.append_queue")
@@ -147,10 +154,17 @@ class Recorder: NSObject {
 
     
     public func stopRecording(resultCallback:@escaping(_ result:URL?)->()?){
-        
+        if self.recording{
+            self.captureSession?.stopRunning()
+            self.recording = false
+            self.displayLink?.remove(from: RunLoop.main, forMode: .common)
+            
+        }
     }
     
-    func setUpWriter(){
+    // MARK: - Private
+    
+    fileprivate func setUpWriter(){
         self._rgbColorSpace = CGColorSpaceCreateDeviceRGB()
         
         // create out CVPixelBufferPool
@@ -164,37 +178,113 @@ class Recorder: NSObject {
         ]
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, outputBufferAttributes as NSDictionary?, &_outputBufferPool);
 
-        do {
-//            self.videoWriter = try AVAssetWriter.init(outputURL: self.videoURL?, fileType:. )
-            
-        } catch {
+        let fileURL:URL = self.videoURL ?? self.tempFileURL
+        guard let videoWriter = try? AVAssetWriter.init(outputURL: fileURL, fileType: .mov) else {
+             fatalError("AVAssetWriter error")
+         }
+        self.videoWriter = videoWriter
+        
+        let pixelNumber = self.viewSize!.width * self.viewSize!.height * scale * self.scale
+        let videoCompression = [
+            AVVideoAverageBitRateKey: NSNumber(value: Double(pixelNumber) * 11.4)
+        ]
+        let outputSettings = [AVVideoCodecKey : AVVideoCodecType.h264,
+                              AVVideoWidthKey : NSNumber(value: Float(self.viewSize!.width * self.scale)),
+                              AVVideoHeightKey : NSNumber(value: Float(self.viewSize!.height * self.scale)),
+                              AVVideoCompressionPropertiesKey : videoCompression] as [String : Any]
+        guard videoWriter.canApply(outputSettings: outputSettings, forMediaType: AVMediaType.video) else {
+            fatalError("Negative : Can't apply the Output settings...")
+        }
 
+        let videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: outputSettings)
+        videoWriterInput.expectsMediaDataInRealTime = true
+        videoWriterInput.transform = self.videoTransformForDeviceOrientation()
+        self.videoWriter?.add(videoWriterInput)
+        self.videoWriterInput = videoWriterInput
+
+        let pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoWriterInput,
+                                                                      sourcePixelBufferAttributes: nil)
+        self.avAdaptor = pixelBufferAdaptor
+        self.videoWriter?.startWriting()
+        self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+    }
+    
+    fileprivate func videoTransformForDeviceOrientation() -> CGAffineTransform {
+        var videoTransform: CGAffineTransform
+        switch UIDevice.current.orientation {
+            case .landscapeLeft:
+                videoTransform = CGAffineTransform(rotationAngle: CGFloat(-Double.pi/2))
+            case .landscapeRight:
+                videoTransform = CGAffineTransform(rotationAngle: CGFloat(Double.pi/2))
+            case .portraitUpsideDown:
+                videoTransform = CGAffineTransform(rotationAngle: .pi)
+            default:
+                videoTransform = .identity
+        }
+        return videoTransform
+    }
+
+    fileprivate func completeRecordingSession(completionCallback:@escaping(_ result:URL?)->()?){
+        self._render_queue.async(execute: {
+            self._append_pixelBuffer_queue.sync(execute: {
+                self._audio_capture_queue.sync(execute: {
+                    self.audioInput?.markAsFinished()
+                    self.videoWriterInput?.markAsFinished()
+                    self.videoWriter?.finishWriting(completionHandler: {
+                        self.saveToPhotoLibrary()
+                        let completion:((_ url: URL?) -> Void) = { url in
+                            self.cleanup()
+                            DispatchQueue.main.async(execute: {
+                                completionCallback(url)
+                            })
+                        }
+                        let videoURL = self.videoURL ?? self.videoWriter?.outputURL
+                        completion(videoURL)
+                    })
+                })
+            })
+        })
+    }
+
+    fileprivate func cleanup() {
+        avAdaptor = nil
+        videoWriterInput = nil
+        videoWriter = nil
+        firstTimeStamp = 0
+        startedAt = nil
+        firstAudioTimeStamp = CMTime.zero
+        outputBufferPoolAuxAttributes = nil
+    }
+
+    fileprivate func saveToPhotoLibrary(){
+        guard let outputURL = self.videoWriter?.outputURL else {
+            print("Error saveToPhotoLibrary: outputURL is nil")
             return
         }
-    }
-    
-    // MARK: - Private
-    static private func allocateOutputBufferPool(with formatDescription: CMFormatDescription,
-                                                 outputRetainedBufferCountHint: Int) -> CVPixelBufferPool? {
-        let inputDimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
-        let outputBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: Int(inputDimensions.width),
-            kCVPixelBufferHeightKey as String: Int(inputDimensions.height),
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
-        ]
-
-        let poolAttributes = [kCVPixelBufferPoolMinimumBufferCountKey as String: outputRetainedBufferCountHint]
-        var cvPixelBufferPool: CVPixelBufferPool?
-        // Create a pixel buffer pool with the same pixel attributes as the input format description
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes as NSDictionary?, outputBufferAttributes as NSDictionary?, &cvPixelBufferPool)
-        guard let pixelBufferPool = cvPixelBufferPool else {
-            assertionFailure("Allocation failure: Could not create pixel buffer pool")
-            return nil
+        if self.writeToPhotoLibrary == true{
+            ALAssetsLibrary().writeVideoAtPath(toSavedPhotosAlbum: outputURL,
+                                               completionBlock: {assetURL, error in
+                if error != nil {
+                    print("Error copying video to camera roll:\(error?.localizedDescription ?? "")")
+                } else {
+                    // remove ?
+                }
+            })
         }
-        return pixelBufferPool
     }
     
+    fileprivate func removeTempFilePath(_ filePath: String?) {
+        guard let filePath = filePath else {
+            return
+        }
+        if FileManager.default.fileExists(atPath: filePath) {
+            do {
+                try FileManager.default.removeItem(atPath: filePath)
+            } catch {
+                print("Error removing ")
+            }
+        }
+    }
 }
 
 extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
