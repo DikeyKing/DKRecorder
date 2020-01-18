@@ -87,7 +87,7 @@ class Recorder: NSObject {
         _append_pixelBuffer_queue = DispatchQueue(label: "ASScreenRecorder.append_queue")
         _render_queue = DispatchQueue(label: "ASScreenRecorder.render_queue")
         _render_queue.setTarget(queue: DispatchQueue.global(qos: .default))
-        _frameRenderingSemaphore = DispatchSemaphore(value: 1) //单线程
+        _frameRenderingSemaphore = DispatchSemaphore(value: 1)
         _pixelAppendSemaphore = DispatchSemaphore(value: 1)
         
         setUpAudioCapture()
@@ -109,7 +109,7 @@ class Recorder: NSObject {
             self.captureSession?.stopRunning()
             self.recording = false
             self.displayLink?.remove(from: RunLoop.main, forMode: .common)
-            
+            self.completeRecordingSession(completionCallback: resultCallback)
         }
     }
     
@@ -178,20 +178,18 @@ class Recorder: NSObject {
     fileprivate func completeRecordingSession(completionCallback:@escaping(_ result:URL?)->()?){
         self._render_queue.async(execute: {
             self._append_pixelBuffer_queue.sync(execute: {
-                self._audio_capture_queue.sync(execute: {
-                    self.audioInput?.markAsFinished()
-                    self.videoWriterInput?.markAsFinished()
-                    self.videoWriter?.finishWriting(completionHandler: {
-                        self.saveToPhotoLibrary()
-                        let completion:((_ url: URL?) -> Void) = { url in
-                            self.cleanup()
-                            DispatchQueue.main.async(execute: {
-                                completionCallback(url)
-                            })
-                        }
-                        let videoURL = self.videoURL ?? self.videoWriter?.outputURL
-                        completion(videoURL)
-                    })
+                self.audioInput?.markAsFinished()
+                self.videoWriterInput?.markAsFinished()
+                self.videoWriter?.finishWriting(completionHandler: {
+                    self.saveToPhotoLibrary()
+                    let completion:((_ url: URL?) -> Void) = { url in
+                        self.cleanup()
+                        DispatchQueue.main.async(execute: {
+                            completionCallback(url)
+                        })
+                    }
+                    let videoURL = self.videoURL ?? self.videoWriter?.outputURL
+                    completion(videoURL)
                 })
             })
         })
@@ -238,6 +236,7 @@ class Recorder: NSObject {
     }
     
     @objc fileprivate func writeVideoFrame(){
+        // http://stackoverflow.com/a/5956119
         if self._frameRenderingSemaphore.wait(timeout: DispatchTime.now()) != .success  {
             return //ensure only one frame to be writed at same time
         }
@@ -268,7 +267,7 @@ class Recorder: NSObject {
             DispatchQueue.main.sync(execute: {
                 UIGraphicsPushContext(bitmapContext)
                 
-                // write frame here
+                // write frame here to bitmapContext
                 if let viewToCapture = self.viewToCapture{
                     if self.runBenchmark {
                         let startTime = CFAbsoluteTimeGetCurrent()
