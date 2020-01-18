@@ -64,7 +64,7 @@ class Recorder: NSObject {
     fileprivate var _frameRenderingSemaphore: DispatchSemaphore!
     fileprivate var _pixelAppendSemaphore: DispatchSemaphore!
     
-    fileprivate var viewSize: CGSize? = UIApplication.shared.delegate?.window??.bounds.size
+    fileprivate var viewSize: CGSize = UIApplication.shared.delegate?.window??.bounds.size ?? CGSize.zero
     fileprivate var scale: CGFloat!
     
     fileprivate var _rgbColorSpace: CGColorSpace? = nil
@@ -123,9 +123,9 @@ class Recorder: NSObject {
         let outputBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String:Int(1),
-            kCVPixelBufferWidthKey as String: Int(self.viewSize!.width * self.scale),
-            kCVPixelBufferHeightKey as String: Int(self.viewSize!.height * self.scale),
-            kCVPixelBufferBytesPerRowAlignmentKey as String: Int(self.viewSize!.width * self.viewSize!.height * self.scale)
+            kCVPixelBufferWidthKey as String: Int(self.viewSize.width * self.scale),
+            kCVPixelBufferHeightKey as String: Int(self.viewSize.height * self.scale),
+            kCVPixelBufferBytesPerRowAlignmentKey as String: Int(self.viewSize.width * self.viewSize.height * self.scale)
         ]
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, outputBufferAttributes as NSDictionary?, &_outputBufferPool);
         
@@ -135,13 +135,13 @@ class Recorder: NSObject {
         }
         self.videoWriter = videoWriter
         
-        let pixelNumber = self.viewSize!.width * self.viewSize!.height * scale * self.scale
+        let pixelNumber = self.viewSize.width * self.viewSize.height * scale * self.scale
         let videoCompression = [
             AVVideoAverageBitRateKey: NSNumber(value: Double(pixelNumber) * 11.4)
         ]
         let outputSettings = [AVVideoCodecKey : AVVideoCodecType.h264,
-                              AVVideoWidthKey : NSNumber(value: Float(self.viewSize!.width * self.scale)),
-                              AVVideoHeightKey : NSNumber(value: Float(self.viewSize!.height * self.scale)),
+                              AVVideoWidthKey : NSNumber(value: Float(self.viewSize.width * self.scale)),
+                              AVVideoHeightKey : NSNumber(value: Float(self.viewSize.height * self.scale)),
                               AVVideoCompressionPropertiesKey : videoCompression] as [String : Any]
         guard videoWriter.canApply(outputSettings: outputSettings, forMediaType: AVMediaType.video) else {
             fatalError("Negative : Can't apply the Output settings...")
@@ -286,7 +286,7 @@ class Recorder: NSObject {
                     if self.runBenchmark {
                         let startTime = CFAbsoluteTimeGetCurrent()
                         for window in UIApplication.shared.windows {
-                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize!.width, height: self.viewSize!.height), afterScreenUpdates: false)
+                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize.width, height: self.viewSize.height), afterScreenUpdates: false)
                         }
                         self.numberOfFramesCaptured += 1
                         if self.numberOfFramesCaptured > INITIALFRAMESTOIGNOREFORBENCHMARK {
@@ -296,7 +296,7 @@ class Recorder: NSObject {
                         }
                     } else {
                         for window in UIApplication.shared.windows {
-                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize!.width, height: self.viewSize!.height), afterScreenUpdates: false)
+                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize.width, height: self.viewSize.height), afterScreenUpdates: false)
                         }
                     }
                 }
@@ -342,7 +342,7 @@ class Recorder: NSObject {
                                       bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue)
         }
         bitmapContext?.scaleBy(x: scale, y: scale)
-        let flipVertical = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: self.viewSize!.height)
+        let flipVertical = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: self.viewSize.height)
         bitmapContext?.concatenate(flipVertical)
         return bitmapContext
     }
