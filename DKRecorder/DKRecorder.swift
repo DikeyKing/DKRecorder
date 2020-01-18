@@ -19,10 +19,10 @@ protocol RecorderProtocol:AnyObject{
 }
 
 class Recorder: NSObject {
-//    static let shared = Recorder.init()
+    //    static let shared = Recorder.init()
     
     weak var delegate:RecorderProtocol?
-
+    
     /// if is recording
     private(set) var recording:Bool = false
     
@@ -37,10 +37,10 @@ class Recorder: NSObject {
     
     /// show  eclpsed time
     var runBenchmark:Bool = false
-
+    
     fileprivate var totalFrameTimeDuringCapture:Double = 0
     fileprivate var numberOfFramesCaptured = 0
-
+    
     // Video Properties
     fileprivate var videoWriter: AVAssetWriter?
     fileprivate var videoWriterInput: AVAssetWriterInput?
@@ -48,7 +48,7 @@ class Recorder: NSObject {
     fileprivate var displayLink: CADisplayLink?
     fileprivate var outputBufferPoolAuxAttributes: [AnyHashable : Any]?
     fileprivate var captureSession: AVCaptureSession?
-
+    
     //Audio Properties
     fileprivate var audioCaptureInput: AVCaptureDeviceInput?
     fileprivate var audioInput: AVAssetWriterInput?
@@ -63,10 +63,10 @@ class Recorder: NSObject {
     fileprivate var _append_pixelBuffer_queue: DispatchQueue!
     fileprivate var _frameRenderingSemaphore: DispatchSemaphore!
     fileprivate var _pixelAppendSemaphore: DispatchSemaphore!
-
+    
     fileprivate var viewSize: CGSize? = UIApplication.shared.delegate?.window??.bounds.size
     fileprivate var scale: CGFloat!
-
+    
     fileprivate var _rgbColorSpace: CGColorSpace? = nil
     fileprivate var _outputBufferPool: CVPixelBufferPool? = nil
     
@@ -83,7 +83,7 @@ class Recorder: NSObject {
         
         // init
         scale = UIScreen.main.scale
-
+        
         _append_pixelBuffer_queue = DispatchQueue(label: "ASScreenRecorder.append_queue")
         _render_queue = DispatchQueue(label: "ASScreenRecorder.render_queue")
         _render_queue.setTarget(queue: DispatchQueue.global(qos: .default))
@@ -103,7 +103,7 @@ class Recorder: NSObject {
         }
         return self.recording
     }
-
+    
     public func stopRecording(resultCallback:@escaping(_ result:URL?)->()?){
         if self.recording{
             self.captureSession?.stopRunning()
@@ -128,11 +128,11 @@ class Recorder: NSObject {
             kCVPixelBufferBytesPerRowAlignmentKey as String: Int(self.viewSize!.width * self.viewSize!.height * self.scale)
         ]
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, outputBufferAttributes as NSDictionary?, &_outputBufferPool);
-
+        
         let fileURL:URL = self.videoURL ?? self.tempFileURL
         guard let videoWriter = try? AVAssetWriter.init(outputURL: fileURL, fileType: .mov) else {
-             fatalError("AVAssetWriter error")
-         }
+            fatalError("AVAssetWriter error")
+        }
         self.videoWriter = videoWriter
         
         let pixelNumber = self.viewSize!.width * self.viewSize!.height * scale * self.scale
@@ -146,13 +146,13 @@ class Recorder: NSObject {
         guard videoWriter.canApply(outputSettings: outputSettings, forMediaType: AVMediaType.video) else {
             fatalError("Negative : Can't apply the Output settings...")
         }
-
+        
         let videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: outputSettings)
         videoWriterInput.expectsMediaDataInRealTime = true
         videoWriterInput.transform = self.videoTransformForDeviceOrientation()
         self.videoWriter?.add(videoWriterInput)
         self.videoWriterInput = videoWriterInput
-
+        
         let pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoWriterInput,
                                                                       sourcePixelBufferAttributes: nil)
         self.avAdaptor = pixelBufferAdaptor
@@ -163,18 +163,18 @@ class Recorder: NSObject {
     fileprivate func videoTransformForDeviceOrientation() -> CGAffineTransform {
         var videoTransform: CGAffineTransform
         switch UIDevice.current.orientation {
-            case .landscapeLeft:
-                videoTransform = CGAffineTransform(rotationAngle: CGFloat(-Double.pi/2))
-            case .landscapeRight:
-                videoTransform = CGAffineTransform(rotationAngle: CGFloat(Double.pi/2))
-            case .portraitUpsideDown:
-                videoTransform = CGAffineTransform(rotationAngle: .pi)
-            default:
-                videoTransform = .identity
+        case .landscapeLeft:
+            videoTransform = CGAffineTransform(rotationAngle: CGFloat(-Double.pi/2))
+        case .landscapeRight:
+            videoTransform = CGAffineTransform(rotationAngle: CGFloat(Double.pi/2))
+        case .portraitUpsideDown:
+            videoTransform = CGAffineTransform(rotationAngle: .pi)
+        default:
+            videoTransform = .identity
         }
         return videoTransform
     }
-
+    
     fileprivate func completeRecordingSession(completionCallback:@escaping(_ result:URL?)->()?){
         self._render_queue.async(execute: {
             self._append_pixelBuffer_queue.sync(execute: {
@@ -196,7 +196,7 @@ class Recorder: NSObject {
             })
         })
     }
-
+    
     fileprivate func cleanup() {
         avAdaptor = nil
         videoWriterInput = nil
@@ -206,7 +206,7 @@ class Recorder: NSObject {
         firstAudioTimeStamp = CMTime.zero
         outputBufferPoolAuxAttributes = nil
     }
-
+    
     fileprivate func saveToPhotoLibrary(){
         guard let outputURL = self.videoWriter?.outputURL else {
             print("Error saveToPhotoLibrary: outputURL is nil")
@@ -215,11 +215,11 @@ class Recorder: NSObject {
         if self.writeToPhotoLibrary == true{
             ALAssetsLibrary().writeVideoAtPath(toSavedPhotosAlbum: outputURL,
                                                completionBlock: {assetURL, error in
-                if error != nil {
-                    print("Error copying video to camera roll:\(error?.localizedDescription ?? "")")
-                } else {
-                    // remove ?
-                }
+                                                if error != nil {
+                                                    print("Error copying video to camera roll:\(error?.localizedDescription ?? "")")
+                                                } else {
+                                                    // remove ?
+                                                }
             })
         }
     }
@@ -346,63 +346,64 @@ class Recorder: NSObject {
         bitmapContext?.concatenate(flipVertical)
         return bitmapContext
     }
-
+    
     fileprivate func averageFrameDurationDuringCapture() -> Double {
         return (totalFrameTimeDuringCapture / Double((self.numberOfFramesCaptured - INITIALFRAMESTOIGNOREFORBENCHMARK)) * 1000.0)
     }
     
     fileprivate func setUpAudioCapture(){
-           let device = AVCaptureDevice.default(for: .audio)
-           if device != nil && device?.isConnected ?? false {
-               print("Connected Device: \(device?.localizedName ?? "")")
-           } else {
-               print("AVCaptureDevice Failed")
-               return
-           }
-           
-           // add device inputs
-           do {
-               if let device = device {
-                   audioCaptureInput = try AVCaptureDeviceInput(device: device)
-               }
-           } catch {
-               print("AVCaptureDeviceInput Failed")
-               return
-           }
-
-           // add output for audio
-           audioCaptureOutput = AVCaptureAudioDataOutput()
-           guard audioCaptureOutput != nil else {
-               print("AVCaptureMovieFileOutput Failed")
-               return
-           }
-
-           _audio_capture_queue = DispatchQueue(label: "AudioCaptureQueue")
-           audioCaptureOutput!.setSampleBufferDelegate(self, queue: _audio_capture_queue)
-
-           captureSession = AVCaptureSession()
-           guard captureSession != nil else {
-               print("AVCaptureSession Failed")
-               return
-           }
-
-           captureSession!.sessionPreset = .medium
-           if captureSession!.canAddInput(audioCaptureInput!) {
-               captureSession!.addInput(audioCaptureInput!)
-           } else {
-               print("Failed to add input device to capture session")
-               return
-           }
-           
-           if captureSession!.canAddOutput(audioCaptureOutput!) {
-               captureSession!.addOutput(audioCaptureOutput!)
-           } else {
-               print("Failed to add output device to capture session")
-               return
-           }
-
-           audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov)
-       }
+        guard let device = AVCaptureDevice.default(for: .audio) else {
+            print("AVCaptureDevice.default(for: .audio) = nil")
+            return
+        }
+        if device.isConnected {
+            print("Connected Device: \(device.localizedName )")
+        } else {
+            print("AVCaptureDevice Failed")
+            return
+        }
+        
+        // add device inputs
+        do {
+            self.audioCaptureInput = try AVCaptureDeviceInput(device: device)
+        } catch {
+            print("AVCaptureDeviceInput Failed")
+            return
+        }
+        
+        // add output for audio
+        audioCaptureOutput = AVCaptureAudioDataOutput()
+        guard audioCaptureOutput != nil else {
+            print("AVCaptureMovieFileOutput Failed")
+            return
+        }
+        
+        _audio_capture_queue = DispatchQueue(label: "AudioCaptureQueue")
+        audioCaptureOutput!.setSampleBufferDelegate(self, queue: _audio_capture_queue)
+        
+        captureSession = AVCaptureSession()
+        guard captureSession != nil else {
+            print("AVCaptureSession Failed")
+            return
+        }
+        
+        captureSession!.sessionPreset = .medium
+        if captureSession!.canAddInput(audioCaptureInput!) {
+            captureSession!.addInput(audioCaptureInput!)
+        } else {
+            print("Failed to add input device to capture session")
+            return
+        }
+        
+        if captureSession!.canAddOutput(audioCaptureOutput!) {
+            captureSession!.addOutput(audioCaptureOutput!)
+        } else {
+            print("Failed to add output device to capture session")
+            return
+        }
+        
+        audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov)
+    }
 }
 
 extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
