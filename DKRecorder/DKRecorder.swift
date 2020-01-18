@@ -12,13 +12,17 @@ import UIKit
 import QuartzCore
 import AssetsLibrary
 
-protocol RecorderProtocol {
+let INITIALFRAMESTOIGNOREFORBENCHMARK = 5
+
+protocol RecorderProtocol:AnyObject{
     func writeBackgroundFrameInContext(contextRef:CGContext)
 }
 
 class Recorder: NSObject {
-    static let shared = Recorder.init()
+//    static let shared = Recorder.init()
     
+    weak var delegate:RecorderProtocol?
+
     /// if is recording
     private(set) var recording:Bool = false
     
@@ -34,7 +38,7 @@ class Recorder: NSObject {
     /// show  eclpsed time
     var runBenchmark:Bool = false
 
-    fileprivate var totalFrameTimeDuringCapture:CGFloat = 0
+    fileprivate var totalFrameTimeDuringCapture:Double = 0
     fileprivate var numberOfFramesCaptured = 0
 
     // Video Properties
@@ -89,70 +93,17 @@ class Recorder: NSObject {
         setUpAudioCapture()
     }
     
-    func setUpAudioCapture(){
-        let device = AVCaptureDevice.default(for: .audio)
-        if device != nil && device?.isConnected ?? false {
-            print("Connected Device: \(device?.localizedName ?? "")")
-        } else {
-            print("AVCaptureDevice Failed")
-            return
-        }
-        
-        // add device inputs
-        do {
-            if let device = device {
-                audioCaptureInput = try AVCaptureDeviceInput(device: device)
-            }
-        } catch {
-            print("AVCaptureDeviceInput Failed")
-            return
-        }
-
-        // add output for audio
-        audioCaptureOutput = AVCaptureAudioDataOutput()
-        guard audioCaptureOutput != nil else {
-            print("AVCaptureMovieFileOutput Failed")
-            return
-        }
-
-        _audio_capture_queue = DispatchQueue(label: "AudioCaptureQueue")
-        audioCaptureOutput!.setSampleBufferDelegate(self, queue: _audio_capture_queue)
-
-        captureSession = AVCaptureSession()
-        guard captureSession != nil else {
-            print("AVCaptureSession Failed")
-            return
-        }
-
-        captureSession!.sessionPreset = .medium
-        if captureSession!.canAddInput(audioCaptureInput!) {
-            captureSession!.addInput(audioCaptureInput!)
-        } else {
-            print("Failed to add input device to capture session")
-            return
-        }
-        
-        if captureSession!.canAddOutput(audioCaptureOutput!) {
-            captureSession!.addOutput(audioCaptureOutput!)
-        } else {
-            print("Failed to add output device to capture session")
-            return
-        }
-
-        audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov)
-    }
-    
     public func startRecording()->Bool {
         if self.recording {
             self.captureSession?.startRunning()
             self.setUpWriter()
             recording = (self.videoWriter?.status == .writing)
+            self.displayLink = CADisplayLink(target: self, selector: #selector(writeVideoFrame))
             self.displayLink?.add(to: RunLoop.main , forMode: .common)
         }
         return self.recording
     }
 
-    
     public func stopRecording(resultCallback:@escaping(_ result:URL?)->()?){
         if self.recording{
             self.captureSession?.stopRunning()
@@ -285,10 +236,188 @@ class Recorder: NSObject {
             }
         }
     }
+    
+    @objc fileprivate func writeVideoFrame(){
+        if self._frameRenderingSemaphore.wait(timeout: DispatchTime.now()) != .success  {
+            return //ensure only one frame to be writed at same time
+        }
+        guard let displayLink = self.displayLink else {
+            print("displayLink is nil")
+            return
+        }
+        self._render_queue.async {
+            if self.videoWriterInput?.isReadyForMoreMediaData == false{
+                return
+            }
+            if self.firstTimeStamp == 0{
+                self.firstTimeStamp = displayLink.timestamp
+            }
+            
+            let elapsed: CFTimeInterval = displayLink.timestamp - self.firstTimeStamp
+            let time = CMTimeAdd(self.firstAudioTimeStamp, CMTimeMakeWithSeconds(Float64(elapsed), preferredTimescale: 1000))
+            
+            var pixelBuffer: CVPixelBuffer? = nil
+            guard let bitmapContext = self.createPixelBufferAndBitmapContext(&pixelBuffer) else{
+                print("bitmapContext is nil")
+                return
+            }
+            
+            self.delegate?.writeBackgroundFrameInContext(contextRef: bitmapContext)
+            
+            // ensure it's not on main thread
+            DispatchQueue.main.sync(execute: {
+                UIGraphicsPushContext(bitmapContext)
+                
+                // write frame here
+                if let viewToCapture = self.viewToCapture{
+                    if self.runBenchmark {
+                        let startTime = CFAbsoluteTimeGetCurrent()
+                        viewToCapture.drawHierarchy(in: viewToCapture.bounds, afterScreenUpdates: false)
+                        self.numberOfFramesCaptured += 1
+                        if self.numberOfFramesCaptured > INITIALFRAMESTOIGNOREFORBENCHMARK {
+                            let currentFrameTime = CFAbsoluteTimeGetCurrent() - startTime
+                            self.totalFrameTimeDuringCapture += currentFrameTime
+                            print("runBenchmark: Average frame time : \(self.averageFrameDurationDuringCapture()) ms")
+                        }
+                    } else {
+                        viewToCapture.drawHierarchy(in: viewToCapture.bounds, afterScreenUpdates: false)
+                    }
+                }else{
+                    if self.runBenchmark {
+                        let startTime = CFAbsoluteTimeGetCurrent()
+                        for window in UIApplication.shared.windows {
+                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize!.width, height: self.viewSize!.height), afterScreenUpdates: false)
+                        }
+                        self.numberOfFramesCaptured += 1
+                        if self.numberOfFramesCaptured > INITIALFRAMESTOIGNOREFORBENCHMARK {
+                            let currentFrameTime = CFAbsoluteTimeGetCurrent() - startTime
+                            self.totalFrameTimeDuringCapture += currentFrameTime
+                            print("runBenchmark: Average frame time : \(self.averageFrameDurationDuringCapture()) ms")
+                        }
+                    } else {
+                        for window in UIApplication.shared.windows {
+                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize!.width, height: self.viewSize!.height), afterScreenUpdates: false)
+                        }
+                    }
+                }
+                // write frame here
+                
+                UIGraphicsPopContext()
+                
+                guard let pixelBuffer = pixelBuffer else{
+                    print("pixelBuffer is nil")
+                    return
+                }
+                if self._pixelAppendSemaphore.wait(timeout: DispatchTime.now()) == .success{
+                    self._append_pixelBuffer_queue.async(execute: {
+                        //一直等待
+                        let success = self.avAdaptor?.append(pixelBuffer, withPresentationTime: time)
+                        if success == false{
+                            print("Warning: Unable to write buffer to video")
+                        }
+                        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+                        self._pixelAppendSemaphore.signal()
+                    })
+                } else {
+                    //假如正在处理，就直接丢弃这一帧
+                    CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+                }
+            })
+        }
+    }
+    
+    fileprivate func createPixelBufferAndBitmapContext( _ pixelBuffer: inout CVPixelBuffer?) -> CGContext? {
+        CVPixelBufferPoolCreatePixelBuffer(nil, self._outputBufferPool!, &pixelBuffer)
+        if let pixelBuffer = pixelBuffer {
+            CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        }
+        var bitmapContext: CGContext? = nil
+        if let pixelBuffer = pixelBuffer {
+            bitmapContext = CGContext(data: CVPixelBufferGetBaseAddress(pixelBuffer),
+                                      width: CVPixelBufferGetWidth(pixelBuffer),
+                                      height: CVPixelBufferGetHeight(pixelBuffer),
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+                                      space: self._rgbColorSpace!,
+                                      bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue)
+        }
+        bitmapContext?.scaleBy(x: scale, y: scale)
+        let flipVertical = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: self.viewSize!.height)
+        bitmapContext?.concatenate(flipVertical)
+        return bitmapContext
+    }
+
+    fileprivate func averageFrameDurationDuringCapture() -> Double {
+        return (totalFrameTimeDuringCapture / Double((self.numberOfFramesCaptured - INITIALFRAMESTOIGNOREFORBENCHMARK)) * 1000.0)
+    }
+    
+    fileprivate func setUpAudioCapture(){
+           let device = AVCaptureDevice.default(for: .audio)
+           if device != nil && device?.isConnected ?? false {
+               print("Connected Device: \(device?.localizedName ?? "")")
+           } else {
+               print("AVCaptureDevice Failed")
+               return
+           }
+           
+           // add device inputs
+           do {
+               if let device = device {
+                   audioCaptureInput = try AVCaptureDeviceInput(device: device)
+               }
+           } catch {
+               print("AVCaptureDeviceInput Failed")
+               return
+           }
+
+           // add output for audio
+           audioCaptureOutput = AVCaptureAudioDataOutput()
+           guard audioCaptureOutput != nil else {
+               print("AVCaptureMovieFileOutput Failed")
+               return
+           }
+
+           _audio_capture_queue = DispatchQueue(label: "AudioCaptureQueue")
+           audioCaptureOutput!.setSampleBufferDelegate(self, queue: _audio_capture_queue)
+
+           captureSession = AVCaptureSession()
+           guard captureSession != nil else {
+               print("AVCaptureSession Failed")
+               return
+           }
+
+           captureSession!.sessionPreset = .medium
+           if captureSession!.canAddInput(audioCaptureInput!) {
+               captureSession!.addInput(audioCaptureInput!)
+           } else {
+               print("Failed to add input device to capture session")
+               return
+           }
+           
+           if captureSession!.canAddOutput(audioCaptureOutput!) {
+               captureSession!.addOutput(audioCaptureOutput!)
+           } else {
+               print("Failed to add output device to capture session")
+               return
+           }
+
+           audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov)
+       }
 }
 
 extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection){
-
+        if output == self.audioCaptureOutput {
+            if startedAt == nil {
+                startedAt = Date()
+                firstAudioTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            }
+            guard self.audioInput != nil else {
+                return
+            }
+            if self.recording && self.audioInput!.isReadyForMoreMediaData {
+                self.audioInput!.append(sampleBuffer)
+            }
+        }
     }
 }
