@@ -31,6 +31,7 @@ class ViewController: UIViewController {
     
     @objc func recordAction(_ sender: UITapGestureRecognizer? = nil) {
         if self.recorder.recording == false {
+//            self.recorder.runBenchmark = true
             self.recorder.startRecording()
             self.recorder.viewToCapture = self.view
             self.recorder.writeToPhotoLibrary = true

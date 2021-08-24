@@ -57,12 +57,15 @@ class Recorder: NSObject {
     fileprivate var firstAudioTimeStamp: CMTime!
     fileprivate var startedAt: Date?
     fileprivate var firstTimeStamp: CFTimeInterval = 0
-    
+
     fileprivate var _audio_capture_queue: DispatchQueue!
     fileprivate var _render_queue: DispatchQueue!
     fileprivate var _append_pixelBuffer_queue: DispatchQueue!
     fileprivate var _frameRenderingSemaphore: DispatchSemaphore!
     fileprivate var _pixelAppendSemaphore: DispatchSemaphore!
+    
+    fileprivate var waitToStart: Bool = false
+    fileprivate var audioReady: Bool = false
     
     fileprivate var viewSize: CGSize = UIScreen.main.bounds.size
 //    fileprivate var viewSize: CGSize = CGSize.init(width: 320, height: 568)
@@ -80,13 +83,13 @@ class Recorder: NSObject {
     
     @discardableResult public func startRecording()-> Bool {
         if self.recording == false {
-            setUpAudioCapture()
+            self.setUpAudioCapture()
             self.captureSession?.startRunning()
             self.setUpWriter()
+                        
             recording = (self.videoWriter?.status == .writing)
             self.displayLink = CADisplayLink(target: self, selector: #selector(writeVideoFrame))
             self.displayLink?.add(to: RunLoop.main , forMode: .common)
-            recording = true
         }
         return self.recording
     }
@@ -141,6 +144,9 @@ class Recorder: NSObject {
             print("error creating audioInput")
             return
         }
+        guard videoWriter!.canAdd(audioInput) else {
+            fatalError("add audioInput")
+        }
         self.videoWriter?.add(audioInput)
         
         // 4. avAdaptor
@@ -153,7 +159,12 @@ class Recorder: NSObject {
         if let status = self.videoWriter?.status{
             switch status {
             case .writing:
-                self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                print(firstAudioTimeStamp as Any)
+                if self.audioReady == true {
+                    self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                }else{
+                    self.waitToStart = true
+                }
                 break
             default:
                 print("error")
@@ -248,10 +259,17 @@ class Recorder: NSObject {
         
         displayLink = nil
         outputBufferPoolAuxAttributes = nil
+        print("clean up")
+
+        self.audioReady = false
+        self.waitToStart = false
     }
     
     @objc fileprivate func writeVideoFrame(){
         // http://stackoverflow.com/a/5956119
+        if self.waitToStart {
+            return
+        }
         if self._frameRenderingSemaphore.wait(timeout: DispatchTime.now()) != .success  {
             return //ensure only one frame to be writed at same time
         }
@@ -324,7 +342,6 @@ class Recorder: NSObject {
                 }
                 if self._pixelAppendSemaphore.wait(timeout: DispatchTime.now()) == .success{
                     self._append_pixelBuffer_queue.async(execute: {
-                        //一直等待
                         let success = self.avAdaptor?.append(pixelBuffer, withPresentationTime: time)
                         if success == false{
                             print(pixelBuffer)
@@ -377,9 +394,7 @@ class Recorder: NSObject {
             print("AVCaptureDevice.default(for: .audio) = nil")
             return
         }
-        if device.isConnected {
-            print("Connected Device: \(device.localizedName )")
-        } else {
+        if !device.isConnected {
             print("AVCaptureDevice Failed")
             return
         }
@@ -453,6 +468,11 @@ extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
             if startedAt == nil {
                 startedAt = Date()
                 firstAudioTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                self.audioReady = true
+                if self.waitToStart {
+                    self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                    self.waitToStart = false
+                }
             }
             guard self.audioInput != nil else {
                 return
