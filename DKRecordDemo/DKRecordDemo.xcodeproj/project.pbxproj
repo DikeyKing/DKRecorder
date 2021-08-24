@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		3C2C0BD126C1573400870D40 /* UIView+AnimationTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2C0BD026C1573400870D40 /* UIView+AnimationTools.swift */; };
 		3C2C0BD326C15D6100870D40 /* ViewController+Animations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2C0BD226C15D6100870D40 /* ViewController+Animations.swift */; };
+		3C7C316526CFAF2A0096CE1F /* Dispatch+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C7C316426CFAF2A0096CE1F /* Dispatch+Extension.swift */; };
 		3CD4565823D29A5300A38F14 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD4565723D29A5300A38F14 /* AppDelegate.swift */; };
 		3CD4565A23D29A5300A38F14 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD4565923D29A5300A38F14 /* SceneDelegate.swift */; };
 		3CD4565C23D29A5300A38F14 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD4565B23D29A5300A38F14 /* ViewController.swift */; };
@@ -21,6 +22,7 @@
 /* Begin PBXFileReference section */
 		3C2C0BD026C1573400870D40 /* UIView+AnimationTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIView+AnimationTools.swift"; sourceTree = "<group>"; };
 		3C2C0BD226C15D6100870D40 /* ViewController+Animations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewController+Animations.swift"; sourceTree = "<group>"; };
+		3C7C316426CFAF2A0096CE1F /* Dispatch+Extension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Dispatch+Extension.swift"; sourceTree = "<group>"; };
 		3CD4565423D29A5300A38F14 /* DKRecordDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DKRecordDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3CD4565723D29A5300A38F14 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		3CD4565923D29A5300A38F14 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 				3CD4565723D29A5300A38F14 /* AppDelegate.swift */,
 				3CD4565923D29A5300A38F14 /* SceneDelegate.swift */,
 				3CD4565B23D29A5300A38F14 /* ViewController.swift */,
+				3C7C316426CFAF2A0096CE1F /* Dispatch+Extension.swift */,
 				3C2C0BD226C15D6100870D40 /* ViewController+Animations.swift */,
 				3C2C0BD026C1573400870D40 /* UIView+AnimationTools.swift */,
 				3CD4565D23D29A5300A38F14 /* Main.storyboard */,
@@ -160,6 +163,7 @@
 				3CD4565C23D29A5300A38F14 /* ViewController.swift in Sources */,
 				3C2C0BD126C1573400870D40 /* UIView+AnimationTools.swift in Sources */,
 				3CD4565823D29A5300A38F14 /* AppDelegate.swift in Sources */,
+				3C7C316526CFAF2A0096CE1F /* Dispatch+Extension.swift in Sources */,
 				3CD4565A23D29A5300A38F14 /* SceneDelegate.swift in Sources */,
 				3C2C0BD326C15D6100870D40 /* ViewController+Animations.swift in Sources */,
 			);
@@ -316,7 +320,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = King.DKRecordDemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -335,7 +339,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = King.DKRecordDemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
