@@ -10,7 +10,7 @@ import Foundation
 import AVFoundation
 import UIKit
 import QuartzCore
-import AssetsLibrary
+import Photos
 
 let INITIALFRAMESTOIGNOREFORBENCHMARK = 5
 
@@ -24,8 +24,8 @@ class Recorder: NSObject {
     weak var delegate:RecorderProtocol?
     
     /// if is recording
-    private(set) var recording:Bool = false
-    
+    private(set) public var recording:Bool = false
+
     /// if saveURL is nil, video will be saved into camera roll, do not change url when recording
     var videoURL:URL?
     
@@ -53,50 +53,40 @@ class Recorder: NSObject {
     fileprivate var audioCaptureInput: AVCaptureDeviceInput?
     fileprivate var audioInput: AVAssetWriterInput?
     fileprivate var audioCaptureOutput: AVCaptureAudioDataOutput?
-    fileprivate var audioSettings: [AnyHashable : Any]?
+    fileprivate var audioSettings: [String : Any]?
     fileprivate var firstAudioTimeStamp: CMTime!
     fileprivate var startedAt: Date?
     fileprivate var firstTimeStamp: CFTimeInterval = 0
-    
+
     fileprivate var _audio_capture_queue: DispatchQueue!
     fileprivate var _render_queue: DispatchQueue!
     fileprivate var _append_pixelBuffer_queue: DispatchQueue!
     fileprivate var _frameRenderingSemaphore: DispatchSemaphore!
     fileprivate var _pixelAppendSemaphore: DispatchSemaphore!
     
-    fileprivate var viewSize: CGSize = UIApplication.shared.delegate?.window??.bounds.size ?? CGSize.zero
-    fileprivate var scale: CGFloat!
+    fileprivate var waitToStart: Bool = false
+    fileprivate var audioReady: Bool = false
     
-    fileprivate var _rgbColorSpace: CGColorSpace? = nil
-    fileprivate var _outputBufferPool: CVPixelBufferPool? = nil
-    
-    fileprivate var tempFileURL:URL {
-        get{
-            let outputPath = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("tmp/screenCapture.mov").absoluteString
-            removeTempFilePath(outputPath)
-            return URL(fileURLWithPath: outputPath)
-        }
-    }
-    
+    fileprivate var viewSize: CGSize = UIScreen.main.bounds.size
+//    fileprivate var viewSize: CGSize = CGSize.init(width: 320, height: 568)
+    fileprivate var scale: CGFloat = UIScreen.main.scale
+    fileprivate var outputBufferPool: CVPixelBufferPool? = nil
+    fileprivate var rgbColorSpace: CGColorSpace? = nil
+
     override init() {
         super.init()
-        
-        // init
-        scale = UIScreen.main.scale
-        
-        _append_pixelBuffer_queue = DispatchQueue(label: "ASScreenRecorder.append_queue")
-        _render_queue = DispatchQueue(label: "ASScreenRecorder.render_queue")
-        _render_queue.setTarget(queue: DispatchQueue.global(qos: .default))
+        _append_pixelBuffer_queue = DispatchQueue.init(label: "ScreenRecorder.append_queue")
+        _render_queue = DispatchQueue.init(label: "ScreenRecorder.render_queue")
         _frameRenderingSemaphore = DispatchSemaphore(value: 1)
         _pixelAppendSemaphore = DispatchSemaphore(value: 1)
-        
-        setUpAudioCapture()
     }
     
-    public func startRecording()->Bool {
-        if self.recording {
+    @discardableResult public func startRecording()-> Bool {
+        if self.recording == false {
+            self.setUpAudioCapture()
             self.captureSession?.startRunning()
             self.setUpWriter()
+                        
             recording = (self.videoWriter?.status == .writing)
             self.displayLink = CADisplayLink(target: self, selector: #selector(writeVideoFrame))
             self.displayLink?.add(to: RunLoop.main , forMode: .common)
@@ -104,7 +94,7 @@ class Recorder: NSObject {
         return self.recording
     }
     
-    public func stopRecording(resultCallback:@escaping(_ result:URL?)->()?){
+    public func stopRecording(resultCallback:@escaping(URL?)->Void){
         if self.recording{
             self.captureSession?.stopRunning()
             self.recording = false
@@ -113,51 +103,97 @@ class Recorder: NSObject {
         }
     }
     
-    // MARK: - Private
+    fileprivate func createVideoWriterInput(videoSetting:[String : Any])->AVAssetWriterInput{
+        let videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: videoSetting)
+        videoWriterInput.expectsMediaDataInRealTime = true
+        videoWriterInput.transform = self.videoTransformForDeviceOrientation()
+        return videoWriterInput
+    }
     
-    fileprivate func setUpWriter(){
-        self._rgbColorSpace = CGColorSpaceCreateDeviceRGB()
-        
-        // create out CVPixelBufferPool
-        _outputBufferPool = nil
-        let outputBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String:Int(1),
-            kCVPixelBufferWidthKey as String: Int(self.viewSize.width * self.scale),
-            kCVPixelBufferHeightKey as String: Int(self.viewSize.height * self.scale),
-            kCVPixelBufferBytesPerRowAlignmentKey as String: Int(self.viewSize.width * self.viewSize.height * self.scale)
-        ]
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, outputBufferAttributes as NSDictionary?, &_outputBufferPool);
-        
+    fileprivate func createVideoWriter(settings:[String : Any])->AVAssetWriter{
         let fileURL:URL = self.videoURL ?? self.tempFileURL
         guard let videoWriter = try? AVAssetWriter.init(outputURL: fileURL, fileType: .mov) else {
             fatalError("AVAssetWriter error")
         }
-        self.videoWriter = videoWriter
-        
-        let pixelNumber = self.viewSize.width * self.viewSize.height * scale * self.scale
-        let videoCompression = [
-            AVVideoAverageBitRateKey: NSNumber(value: Double(pixelNumber) * 11.4)
-        ]
-        let outputSettings = [AVVideoCodecKey : AVVideoCodecType.h264,
-                              AVVideoWidthKey : NSNumber(value: Float(self.viewSize.width * self.scale)),
-                              AVVideoHeightKey : NSNumber(value: Float(self.viewSize.height * self.scale)),
-                              AVVideoCompressionPropertiesKey : videoCompression] as [String : Any]
-        guard videoWriter.canApply(outputSettings: outputSettings, forMediaType: AVMediaType.video) else {
+        guard videoWriter.canApply(outputSettings: settings, forMediaType: AVMediaType.video) else {
             fatalError("Negative : Can't apply the Output settings...")
         }
+        return videoWriter
+    }
+
+    fileprivate func setUpWriter(){
         
-        let videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: outputSettings)
-        videoWriterInput.expectsMediaDataInRealTime = true
-        videoWriterInput.transform = self.videoTransformForDeviceOrientation()
-        self.videoWriter?.add(videoWriterInput)
-        self.videoWriterInput = videoWriterInput
+        self.rgbColorSpace = CGColorSpaceCreateDeviceRGB()
         
-        let pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoWriterInput,
-                                                                      sourcePixelBufferAttributes: nil)
-        self.avAdaptor = pixelBufferAdaptor
-        self.videoWriter?.startWriting()
-        self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+        // 1. pixelBuffer
+        outputBufferPool = nil
+        let outputBufferAttributes = self.outputBufferAttributes()
+        CVPixelBufferPoolCreate(nil, nil, outputBufferAttributes as CFDictionary, &outputBufferPool);
+        
+        // 2. videoWriterInput
+        let videoSettings = self.videoSettings()
+        
+        // 3. videoWriter
+        self.videoWriterInput = self.createVideoWriterInput(videoSetting: videoSettings)
+        self.videoWriter = self.createVideoWriter(settings: videoSettings)
+        self.videoWriter?.add(videoWriterInput!)
+        guard videoWriter!.canApply(outputSettings: videoSettings, forMediaType: AVMediaType.video) else {
+            fatalError("Negative : Can't apply the Output settings...")
+        }
+        guard let audioInput = self.audioInput else {
+            print("error creating audioInput")
+            return
+        }
+        guard videoWriter!.canAdd(audioInput) else {
+            fatalError("add audioInput")
+        }
+        self.videoWriter?.add(audioInput)
+        
+        // 4. avAdaptor
+        self.avAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoWriterInput!,
+                                                              sourcePixelBufferAttributes: nil)
+        if self.videoWriter!.startWriting() == false {
+            print("startWriting failled")
+            return
+        }
+        if let status = self.videoWriter?.status{
+            switch status {
+            case .writing:
+                print(firstAudioTimeStamp as Any)
+                if self.audioReady == true {
+                    self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                }else{
+                    self.waitToStart = true
+                }
+                break
+            default:
+                print("error")
+                break
+            }
+        }
+    }
+    
+    fileprivate func outputBufferAttributes()->[String: Any]{
+        let outputBufferAttributes:[String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String:Int(1),
+            kCVPixelBufferWidthKey as String: NSNumber(value: Int(self.viewSize.width * self.scale))  ,
+            kCVPixelBufferHeightKey as String: NSNumber(value:  Int(self.viewSize.height * self.scale)) ,
+            kCVPixelBufferBytesPerRowAlignmentKey as String: Int(self.viewSize.width * self.scale * 4)
+        ]
+        return outputBufferAttributes
+    }
+    
+    fileprivate func videoSettings()->[String : Any]{
+        let pixelNumber = self.viewSize.width * self.viewSize.height * scale
+        let videoCompression = [
+            AVVideoAverageBitRateKey: NSNumber(value: Int(Double(pixelNumber) * 11.4))
+        ]
+        let videoSettings = [AVVideoCodecKey : AVVideoCodecType.h264,
+                              AVVideoWidthKey : NSNumber(value: Int(self.viewSize.width * self.scale)),
+                              AVVideoHeightKey : NSNumber(value: Int(self.viewSize.height * self.scale)),
+                              AVVideoCompressionPropertiesKey : videoCompression] as [String : Any]
+        return videoSettings
     }
     
     fileprivate func videoTransformForDeviceOrientation() -> CGAffineTransform {
@@ -165,10 +201,16 @@ class Recorder: NSObject {
         switch UIDevice.current.orientation {
         case .landscapeLeft:
             videoTransform = CGAffineTransform(rotationAngle: CGFloat(-Double.pi/2))
+            break
+            
         case .landscapeRight:
             videoTransform = CGAffineTransform(rotationAngle: CGFloat(Double.pi/2))
+            break
+            
         case .portraitUpsideDown:
             videoTransform = CGAffineTransform(rotationAngle: .pi)
+            break
+
         default:
             videoTransform = .identity
         }
@@ -181,15 +223,26 @@ class Recorder: NSObject {
                 self.audioInput?.markAsFinished()
                 self.videoWriterInput?.markAsFinished()
                 self.videoWriter?.finishWriting(completionHandler: {
-                    self.saveToPhotoLibrary()
                     let completion:((_ url: URL?) -> Void) = { url in
                         self.cleanup()
                         DispatchQueue.main.async(execute: {
                             completionCallback(url)
                         })
                     }
-                    let videoURL = self.videoURL ?? self.videoWriter?.outputURL
-                    completion(videoURL)
+                    if let videoURL = self.videoURL ?? self.videoWriter?.outputURL{
+                        if self.writeToPhotoLibrary == true{
+                            PHPhotoLibrary.shared().performChanges({
+                                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+                            }) { saved, error in
+                                if error != nil {
+                                    print("Error copying video to camera roll:\(error?.localizedDescription ?? "")")
+                                }
+                                completion(videoURL)
+                            }
+                        }else{
+                            completion(videoURL)
+                        }
+                    }
                 })
             })
         })
@@ -199,44 +252,24 @@ class Recorder: NSObject {
         avAdaptor = nil
         videoWriterInput = nil
         videoWriter = nil
+        
         firstTimeStamp = 0
         startedAt = nil
         firstAudioTimeStamp = CMTime.zero
+        
+        displayLink = nil
         outputBufferPoolAuxAttributes = nil
-    }
-    
-    fileprivate func saveToPhotoLibrary(){
-        guard let outputURL = self.videoWriter?.outputURL else {
-            print("Error saveToPhotoLibrary: outputURL is nil")
-            return
-        }
-        if self.writeToPhotoLibrary == true{
-            ALAssetsLibrary().writeVideoAtPath(toSavedPhotosAlbum: outputURL,
-                                               completionBlock: {assetURL, error in
-                                                if error != nil {
-                                                    print("Error copying video to camera roll:\(error?.localizedDescription ?? "")")
-                                                } else {
-                                                    // remove ?
-                                                }
-            })
-        }
-    }
-    
-    fileprivate func removeTempFilePath(_ filePath: String?) {
-        guard let filePath = filePath else {
-            return
-        }
-        if FileManager.default.fileExists(atPath: filePath) {
-            do {
-                try FileManager.default.removeItem(atPath: filePath)
-            } catch {
-                print("Error removing ")
-            }
-        }
+        print("clean up")
+
+        self.audioReady = false
+        self.waitToStart = false
     }
     
     @objc fileprivate func writeVideoFrame(){
         // http://stackoverflow.com/a/5956119
+        if self.waitToStart {
+            return
+        }
         if self._frameRenderingSemaphore.wait(timeout: DispatchTime.now()) != .success  {
             return //ensure only one frame to be writed at same time
         }
@@ -285,7 +318,7 @@ class Recorder: NSObject {
                     if self.runBenchmark {
                         let startTime = CFAbsoluteTimeGetCurrent()
                         for window in UIApplication.shared.windows {
-                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize.width, height: self.viewSize.height), afterScreenUpdates: false)
+                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize.width*self.scale, height: self.viewSize.height*self.scale), afterScreenUpdates: false)
                         }
                         self.numberOfFramesCaptured += 1
                         if self.numberOfFramesCaptured > INITIALFRAMESTOIGNOREFORBENCHMARK {
@@ -295,7 +328,7 @@ class Recorder: NSObject {
                         }
                     } else {
                         for window in UIApplication.shared.windows {
-                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize.width, height: self.viewSize.height), afterScreenUpdates: false)
+                            window.drawHierarchy(in: CGRect(x: 0, y: 0, width: self.viewSize.width*self.scale, height: self.viewSize.height*self.scale), afterScreenUpdates: false)
                         }
                     }
                 }
@@ -309,9 +342,10 @@ class Recorder: NSObject {
                 }
                 if self._pixelAppendSemaphore.wait(timeout: DispatchTime.now()) == .success{
                     self._append_pixelBuffer_queue.async(execute: {
-                        //一直等待
                         let success = self.avAdaptor?.append(pixelBuffer, withPresentationTime: time)
                         if success == false{
+                            print(pixelBuffer)
+                            print(self.avAdaptor as Any)
                             print("Warning: Unable to write buffer to video")
                         }
                         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
@@ -322,11 +356,16 @@ class Recorder: NSObject {
                     CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
                 }
             })
+            self._frameRenderingSemaphore.signal()
         }
     }
     
     fileprivate func createPixelBufferAndBitmapContext( _ pixelBuffer: inout CVPixelBuffer?) -> CGContext? {
-        CVPixelBufferPoolCreatePixelBuffer(nil, self._outputBufferPool!, &pixelBuffer)
+        guard let outputBufferPool = self.outputBufferPool else {
+            print("error:createPixelBufferAndBitmapContext")
+            return nil
+        }
+        CVPixelBufferPoolCreatePixelBuffer(nil, outputBufferPool, &pixelBuffer)
         if let pixelBuffer = pixelBuffer {
             CVPixelBufferLockBaseAddress(pixelBuffer, [])
         }
@@ -337,7 +376,7 @@ class Recorder: NSObject {
                                       height: CVPixelBufferGetHeight(pixelBuffer),
                                       bitsPerComponent: 8,
                                       bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
-                                      space: self._rgbColorSpace!,
+                                      space: self.rgbColorSpace!,
                                       bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue)
         }
         bitmapContext?.scaleBy(x: scale, y: scale)
@@ -355,17 +394,18 @@ class Recorder: NSObject {
             print("AVCaptureDevice.default(for: .audio) = nil")
             return
         }
-        if device.isConnected {
-            print("Connected Device: \(device.localizedName )")
-        } else {
+        if !device.isConnected {
             print("AVCaptureDevice Failed")
             return
         }
         
+        firstAudioTimeStamp = CMTime.zero
+
         // add device inputs
         do {
-            self.audioCaptureInput = try AVCaptureDeviceInput(device: device)
+            self.audioCaptureInput = try AVCaptureDeviceInput.init(device: device)
         } catch {
+            print(error)
             print("AVCaptureDeviceInput Failed")
             return
         }
@@ -401,7 +441,24 @@ class Recorder: NSObject {
             return
         }
         
-        audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov)
+        audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov) as? [String : Any]
+        
+        // 4. audio
+        self.audioInput = AVAssetWriterInput.init(mediaType: .audio, outputSettings: self.audioSettings)
+        self.audioInput?.expectsMediaDataInRealTime = true
+    }
+    
+    fileprivate var tempFileURL:URL {
+        get{
+            let outputPath = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("tmp/screenCapture.mov").absoluteString
+            do {
+                // delete old video
+                try FileManager.default.removeItem(at: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("tmp/screenCapture.mov"))
+            } catch {
+                print(error.localizedDescription)
+            }
+            return URL(string: outputPath)!
+        }
     }
 }
 
@@ -411,6 +468,11 @@ extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
             if startedAt == nil {
                 startedAt = Date()
                 firstAudioTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                self.audioReady = true
+                if self.waitToStart {
+                    self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                    self.waitToStart = false
+                }
             }
             guard self.audioInput != nil else {
                 return

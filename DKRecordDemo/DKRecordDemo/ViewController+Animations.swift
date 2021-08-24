@@ -20,6 +20,7 @@ extension CGPoint{
 extension ViewController{
     
     func addAnimationViews() {
+        let color = UIColor.random()
         for _ in 1...10 {
             let randomInt = Int.random(in: 0..<2)
             if randomInt == AnimationViews.circle.rawValue {
@@ -27,7 +28,6 @@ extension ViewController{
                 circleView.center = CGPoint.generateRandomPointInScreen()
                 circleView.layer.cornerRadius = 50/2.0
                 circleView.layer.borderWidth = 3
-                let color = UIColor.random()
                 circleView.layer.borderColor = color.cgColor
                 circleView.backgroundColor = color
                 view.addSubview(circleView)
