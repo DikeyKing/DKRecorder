@@ -13,7 +13,7 @@ Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com
 1. if you can want to record a view, first init a recorder
 
    ```
-       let recorder = Recorder.init()
+       let recorder = DKRecorder.init()
    ```
 
 2. then set the destination view you want to record
