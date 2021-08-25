@@ -38,6 +38,9 @@ class Recorder: NSObject {
     /// show  eclpsed time
     var runBenchmark:Bool = false
     
+    /// call before startRecording
+    var recordAudio:Bool = true
+    
     fileprivate var totalFrameTimeDuringCapture:Double = 0
     fileprivate var numberOfFramesCaptured = 0
     
@@ -479,7 +482,9 @@ extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
                 return
             }
             if self.recording && self.audioInput!.isReadyForMoreMediaData {
-                self.audioInput!.append(sampleBuffer)
+                if self.recordAudio {
+                    self.audioInput!.append(sampleBuffer)
+                }
             }
         }
     }
