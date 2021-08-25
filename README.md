@@ -40,5 +40,4 @@ Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com
        self.recorder.writeToPhotoLibrary = true // you don't want to save the video to library
    ```
 
-   
-
+5. See demo for detail
