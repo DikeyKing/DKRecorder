@@ -96,6 +96,8 @@ class Recorder: NSObject {
     
     public func stopRecording(resultCallback:@escaping(URL?)->Void){
         if self.recording{
+            self.waitToStart = false
+            self.audioReady = false
             self.captureSession?.stopRunning()
             self.recording = false
             self.displayLink?.remove(from: RunLoop.main, forMode: .common)
