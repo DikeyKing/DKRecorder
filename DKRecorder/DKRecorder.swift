@@ -14,7 +14,7 @@ import Photos
 
 let INITIALFRAMESTOIGNOREFORBENCHMARK = 5
 
-protocol RecorderProtocol:AnyObject{
+public protocol RecorderProtocol:AnyObject{
     
     /// contextRef of each frame, can use this to save image
     /// - Parameter contextRef: CGContext
@@ -23,25 +23,25 @@ protocol RecorderProtocol:AnyObject{
 
 public class DKRecorder: NSObject {
     
-    weak var delegate:RecorderProtocol?
+    public weak var delegate:RecorderProtocol?
     
     /// if is recording
     private(set) public var recording:Bool = false
 
     /// if saveURL is nil, video will be saved into camera roll, do not change url when recording
-    var videoURL:URL?
+    public var videoURL:URL?
     
     /// if nil , UIWindow is insted
-    var viewToCapture:UIView?
+    public var viewToCapture:UIView?
     
     /// if YES , write to PhotoLibrary after finishing recording
-    var writeToPhotoLibrary:Bool = false
+    public var writeToPhotoLibrary:Bool = false
     
     /// show  eclpsed time
-    var runBenchmark:Bool = false
+    public var runBenchmark:Bool = false
     
     /// call before startRecording
-    var recordAudio:Bool = true
+    public var recordAudio:Bool = true
     
     fileprivate var totalFrameTimeDuringCapture:Double = 0
     fileprivate var numberOfFramesCaptured = 0
