@@ -161,7 +161,6 @@ class Recorder: NSObject {
         if let status = self.videoWriter?.status{
             switch status {
             case .writing:
-                print(firstAudioTimeStamp as Any)
                 if self.audioReady == true {
                     self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
                 }else{
