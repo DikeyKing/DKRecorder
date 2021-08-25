@@ -21,7 +21,7 @@ protocol RecorderProtocol:AnyObject{
     func writeBackgroundFrameInContext(contextRef:CGContext)
 }
 
-class Recorder: NSObject {
+public class DKRecorder: NSObject {
     
     weak var delegate:RecorderProtocol?
     
@@ -77,7 +77,7 @@ class Recorder: NSObject {
     fileprivate var outputBufferPool: CVPixelBufferPool? = nil
     fileprivate var rgbColorSpace: CGColorSpace? = nil
 
-    override init() {
+    public override init() {
         super.init()
         _append_pixelBuffer_queue = DispatchQueue.init(label: "ScreenRecorder.append_queue")
         _render_queue = DispatchQueue.init(label: "ScreenRecorder.render_queue")
@@ -468,8 +468,8 @@ class Recorder: NSObject {
     }
 }
 
-extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection){
+extension DKRecorder:AVCaptureAudioDataOutputSampleBufferDelegate{
+    public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection){
         if output == self.audioCaptureOutput {
             if startedAt == nil {
                 startedAt = Date()

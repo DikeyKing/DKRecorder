@@ -16,7 +16,7 @@ enum AnimationViews:Int {
 
 class ViewController: UIViewController {
 
-    let recorder = Recorder.init()
+    let recorder = DKRecorder.init()
     var animationViews = [UIView].init()
 
     override func viewDidLoad() {
