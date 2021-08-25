@@ -38,6 +38,9 @@ class Recorder: NSObject {
     /// show  eclpsed time
     var runBenchmark:Bool = false
     
+    /// call before startRecording
+    var recordAudio:Bool = true
+    
     fileprivate var totalFrameTimeDuringCapture:Double = 0
     fileprivate var numberOfFramesCaptured = 0
     
@@ -96,6 +99,8 @@ class Recorder: NSObject {
     
     public func stopRecording(resultCallback:@escaping(URL?)->Void){
         if self.recording{
+            self.waitToStart = false
+            self.audioReady = false
             self.captureSession?.stopRunning()
             self.recording = false
             self.displayLink?.remove(from: RunLoop.main, forMode: .common)
@@ -159,7 +164,6 @@ class Recorder: NSObject {
         if let status = self.videoWriter?.status{
             switch status {
             case .writing:
-                print(firstAudioTimeStamp as Any)
                 if self.audioReady == true {
                     self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
                 }else{
@@ -478,7 +482,9 @@ extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
                 return
             }
             if self.recording && self.audioInput!.isReadyForMoreMediaData {
-                self.audioInput!.append(sampleBuffer)
+                if self.recordAudio {
+                    self.audioInput!.append(sampleBuffer)
+                }
             }
         }
     }

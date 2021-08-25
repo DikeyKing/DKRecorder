@@ -33,6 +33,7 @@ class ViewController: UIViewController {
         if self.recorder.recording == false {
 //            self.recorder.runBenchmark = true
             self.recorder.startRecording()
+//            self.recorder.recordAudio = true
             self.recorder.viewToCapture = self.view
             self.recorder.writeToPhotoLibrary = true
             print("startRecording")
