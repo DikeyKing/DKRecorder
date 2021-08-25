@@ -15,11 +15,13 @@ import Photos
 let INITIALFRAMESTOIGNOREFORBENCHMARK = 5
 
 protocol RecorderProtocol:AnyObject{
+    
+    /// contextRef of each frame, can use this to save image
+    /// - Parameter contextRef: CGContext
     func writeBackgroundFrameInContext(contextRef:CGContext)
 }
 
 class Recorder: NSObject {
-    //    static let shared = Recorder.init()
     
     weak var delegate:RecorderProtocol?
     
@@ -71,7 +73,6 @@ class Recorder: NSObject {
     fileprivate var audioReady: Bool = false
     
     fileprivate var viewSize: CGSize = UIScreen.main.bounds.size
-//    fileprivate var viewSize: CGSize = CGSize.init(width: 320, height: 568)
     fileprivate var scale: CGFloat = UIScreen.main.scale
     fileprivate var outputBufferPool: CVPixelBufferPool? = nil
     fileprivate var rgbColorSpace: CGColorSpace? = nil
@@ -145,6 +146,7 @@ class Recorder: NSObject {
         guard videoWriter!.canApply(outputSettings: videoSettings, forMediaType: AVMediaType.video) else {
             fatalError("Negative : Can't apply the Output settings...")
         }
+        // add audioInput to videoWriter
         guard let audioInput = self.audioInput else {
             print("error creating audioInput")
             return
@@ -154,7 +156,7 @@ class Recorder: NSObject {
         }
         self.videoWriter?.add(audioInput)
         
-        // 4. avAdaptor
+        // 4. avAdaptor & start
         self.avAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoWriterInput!,
                                                               sourcePixelBufferAttributes: nil)
         if self.videoWriter!.startWriting() == false {
@@ -165,8 +167,10 @@ class Recorder: NSObject {
             switch status {
             case .writing:
                 if self.audioReady == true {
+                    // if there is timestamp
                     self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
                 }else{
+                    // if there is no timestamp, wait for audio's
                     self.waitToStart = true
                 }
                 break
@@ -263,7 +267,6 @@ class Recorder: NSObject {
         
         displayLink = nil
         outputBufferPoolAuxAttributes = nil
-        print("clean up")
 
         self.audioReady = false
         self.waitToStart = false
@@ -409,8 +412,7 @@ class Recorder: NSObject {
         do {
             self.audioCaptureInput = try AVCaptureDeviceInput.init(device: device)
         } catch {
-            print(error)
-            print("AVCaptureDeviceInput Failed")
+            print("AVCaptureDeviceInput Failed：\(error)")
             return
         }
         
@@ -447,7 +449,7 @@ class Recorder: NSObject {
         
         audioSettings = audioCaptureOutput!.recommendedAudioSettingsForAssetWriter(writingTo: .mov) as? [String : Any]
         
-        // 4. audio
+        // audio
         self.audioInput = AVAssetWriterInput.init(mediaType: .audio, outputSettings: self.audioSettings)
         self.audioInput?.expectsMediaDataInRealTime = true
     }
@@ -473,6 +475,7 @@ extension Recorder:AVCaptureAudioDataOutputSampleBufferDelegate{
                 startedAt = Date()
                 firstAudioTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
                 self.audioReady = true
+                // videoWriter need a timestamp, here we use audio sampleBuffer's for recording
                 if self.waitToStart {
                     self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
                     self.waitToStart = false
