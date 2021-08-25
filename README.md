@@ -1,15 +1,13 @@
 # DKRecorder
+
 Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com/alskipp/ASScreenRecorder)
 
+## Intergate
 
-
-## Todo
-
-1. Test cases
-3. Record file Size Optimze
-
-
-
+   ```
+      pod 'DKRecorder', :git=>'https://github.com/DikeyKing/DKRecorder.git', :tag => '0.1.0'
+   ```
+   
 ## Usage
 
 1. if you can want to record a view, first init a recorder
@@ -41,3 +39,9 @@ Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com
    ```
 
 5. See demo for detail
+
+## Todo
+
+1. Test cases
+2. Record file Size Optimze
+
