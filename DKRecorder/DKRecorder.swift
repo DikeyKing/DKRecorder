@@ -349,11 +349,16 @@ public class DKRecorder: NSObject {
                 }
                 if self._pixelAppendSemaphore.wait(timeout: DispatchTime.now()) == .success{
                     self._append_pixelBuffer_queue.async(execute: {
-                        let success = self.avAdaptor?.append(pixelBuffer, withPresentationTime: time)
-                        if success == false{
-                            print(pixelBuffer)
-                            print(self.avAdaptor as Any)
-                            print("Warning: Unable to write buffer to video")
+                        // should check again
+                        if self.videoWriterInput?.isReadyForMoreMediaData == true{
+                            let success = self.avAdaptor?.append(pixelBuffer, withPresentationTime: time)
+                            if success == false{
+                                print(pixelBuffer)
+                                print(self.avAdaptor as Any)
+                                print("Warning: Unable to write buffer to video")
+                            }
+                        }else{
+                            print("not ready and discard")
                         }
                         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
                         self._pixelAppendSemaphore.signal()
