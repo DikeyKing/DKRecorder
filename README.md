@@ -5,7 +5,7 @@ Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com
 ## Intergate
 
    ```
-      pod 'DKRecorder', :git=>'https://github.com/DikeyKing/DKRecorder.git', :tag => '0.1.0'
+      pod 'DKRecorder', :git=>'https://github.com/DikeyKing/DKRecorder.git', :tag => '0.1.1'
    ```
    
 ## Usage
