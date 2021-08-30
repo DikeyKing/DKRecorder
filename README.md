@@ -5,7 +5,7 @@ Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com
 ## Intergate
 
    ```
-      pod 'DKRecorder', :git=>'https://github.com/DikeyKing/DKRecorder.git', :tag => '0.1.1'
+      pod 'DKRecorder', :git=>'https://github.com/DikeyKing/DKRecorder.git', :tag => '0.1.2'
    ```
    
 ## Usage
@@ -34,7 +34,7 @@ Swift Recorder to record UIView, idea from [ASScreenRecorder](https://github.com
 4. And here is some settings can be changed
 
    ```
-       self.recorder.recordAudio = false // you don't want to record audio 
+       self.recorder.recordAudio = false // Make sure NSMicrophoneUsageDescription is added to info.plist when recordAudio is true 
        self.recorder.writeToPhotoLibrary = true // you don't want to save the video to library
    ```
 
