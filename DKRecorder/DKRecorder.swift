@@ -40,7 +40,7 @@ public class DKRecorder: NSObject {
     /// show  eclpsed time
     public var runBenchmark:Bool = false
     
-    /// call before startRecording
+    /// call before startRecording, can not be changed during capture
     public var recordAudio:Bool = true
     
     fileprivate var totalFrameTimeDuringCapture:Double = 0
@@ -87,7 +87,9 @@ public class DKRecorder: NSObject {
     
     @discardableResult public func startRecording()-> Bool {
         if self.recording == false {
-            self.setUpAudioCapture()
+            if recordAudio == true {
+                self.setUpAudioCapture()
+            }
             self.captureSession?.startRunning()
             self.setUpWriter()
                         
@@ -147,14 +149,16 @@ public class DKRecorder: NSObject {
             fatalError("Negative : Can't apply the Output settings...")
         }
         // add audioInput to videoWriter
-        guard let audioInput = self.audioInput else {
-            print("error creating audioInput")
-            return
+        if self.recordAudio == true {
+            guard let audioInput = self.audioInput else {
+                print("error creating audioInput")
+                return
+            }
+            guard videoWriter!.canAdd(audioInput) else {
+                fatalError("add audioInput")
+            }
+            self.videoWriter?.add(audioInput)
         }
-        guard videoWriter!.canAdd(audioInput) else {
-            fatalError("add audioInput")
-        }
-        self.videoWriter?.add(audioInput)
         
         // 4. avAdaptor & start
         self.avAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoWriterInput!,
@@ -166,12 +170,17 @@ public class DKRecorder: NSObject {
         if let status = self.videoWriter?.status{
             switch status {
             case .writing:
-                if self.audioReady == true {
-                    // if there is timestamp
-                    self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                if self.recordAudio == true {
+                    if self.audioReady == true {
+                        // if there is timestamp
+                        self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
+                    }else{
+                        // if there is no timestamp, wait for audio's
+                        self.waitToStart = true
+                    }
                 }else{
-                    // if there is no timestamp, wait for audio's
-                    self.waitToStart = true
+                    self.firstAudioTimeStamp = CMTime.init(value: 0, timescale: 1000)
+                    self.videoWriter?.startSession(atSourceTime: self.firstAudioTimeStamp)
                 }
                 break
             default:

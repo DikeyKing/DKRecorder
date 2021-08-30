@@ -32,8 +32,10 @@ class ViewController: UIViewController {
     @objc func recordAction(_ sender: UITapGestureRecognizer? = nil) {
         if self.recorder.recording == false {
 //            self.recorder.runBenchmark = true
+            // add NSMicrophoneUsageDescription key to app's Info.plist if recordAudio = true
+             self.recorder.recordAudio = true
+            
             self.recorder.startRecording()
-//            self.recorder.recordAudio = true
             self.recorder.viewToCapture = self.view
             self.recorder.writeToPhotoLibrary = true
             print("startRecording")
